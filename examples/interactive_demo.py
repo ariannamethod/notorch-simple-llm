@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-零基础LLM教程 - 交互式演示代码
-这个文件包含了教程中所有的代码，并提供了交互式的演示功能
+LLM Tutorial from Scratch - Interactive Demo Code
+This file contains all code from the tutorial and provides interactive demo features
 
 notorch version — no PyTorch. Pure C backend via ctypes.
 """
@@ -21,56 +21,56 @@ from ariannamethod.notorch_nn import (
 )
 from ariannamethod.chuck import ChuckOptimizer
 
-# 设置随机种子，确保结果可复现
+# Set random seed for reproducibility
 nt_seed(42)
 random.seed(42)
 
 class SimpleTokenizer:
     """
-    简单的字符级分词器
+    Simple character-level tokenizer
 
-    这个分词器把文本转换成数字，让计算机能够处理
-    就像给每个字符分配一个身份证号码
+    This tokenizer converts text into numbers so the computer can process it
+    Like assigning an ID number to each character
     """
     def __init__(self, text):
-        print("🔤 初始化分词器...")
-        # 获取所有唯一字符并排序，构建词汇表
+        print("🔤 Initializing tokenizer...")
+        # Get all unique characters and sort them to build the vocabulary
         self.chars = sorted(list(set(text)))
         self.vocab_size = len(self.chars)
 
-        # 字符到索引的映射（字符 → 数字）
+        # Character-to-index mapping (character → number)
         self.char_to_idx = {ch: i for i, ch in enumerate(self.chars)}
-        # 索引到字符的映射（数字 → 字符）
+        # Index-to-character mapping (number → character)
         self.idx_to_char = {i: ch for i, ch in enumerate(self.chars)}
 
-        print(f"   词汇表大小: {self.vocab_size}")
-        print(f"   包含字符: {self.chars[:10]}..." if len(self.chars) > 10 else f"   包含字符: {self.chars}")
+        print(f"   Vocabulary size: {self.vocab_size}")
+        print(f"   Characters: {self.chars[:10]}..." if len(self.chars) > 10 else f"   Characters: {self.chars}")
 
     def encode(self, text):
-        """将文本编码为token索引列表"""
+        """Encode text into a list of token indices"""
         return [self.char_to_idx[ch] for ch in text]
 
     def decode(self, indices):
-        """将token索引列表解码为文本"""
+        """Decode a list of token indices into text"""
         return ''.join([self.idx_to_char[i] for i in indices])
 
     def demo_encoding(self, text):
-        """演示编码过程"""
-        print(f"\n📝 编码演示:")
-        print(f"   原始文本: '{text}'")
+        """Demonstrate the encoding process"""
+        print(f"\n📝 Encoding demo:")
+        print(f"   Original text: '{text}'")
         encoded = self.encode(text)
-        print(f"   编码结果: {encoded}")
+        print(f"   Encoded result: {encoded}")
         decoded = self.decode(encoded)
-        print(f"   解码验证: '{decoded}'")
+        print(f"   Decoded verification: '{decoded}'")
         return encoded
 
 
 class SimpleLLM(Module):
     """
-    简化版大语言模型 — backed by notorch
+    Simplified large language model — backed by notorch
 
-    这是我们的完整模型，包含了现代LLM的所有核心组件
-    虽然很小，但原理和GPT/LLaMA是一样的
+    This is our complete model, containing all core components of a modern LLM
+    Although small, the principles are the same as GPT/LLaMA
     Architecture: RMSNorm + SwiGLU + RoPE + multi-head causal attention.
     """
     def __init__(self, vocab_size, d_model=128, n_heads=4, n_layers=2, max_seq_len=64):
@@ -86,12 +86,12 @@ class SimpleLLM(Module):
         hidden = 64 * ((hidden + 63) // 64)
         self.hidden = hidden
 
-        print(f"\n🤖 初始化SimpleLLM:")
-        print(f"   词汇表大小: {vocab_size}")
-        print(f"   模型维度: {d_model}")
-        print(f"   注意力头数: {n_heads}")
-        print(f"   Transformer层数: {n_layers}")
-        print(f"   最大序列长度: {max_seq_len}")
+        print(f"\n🤖 Initializing SimpleLLM:")
+        print(f"   Vocabulary size: {vocab_size}")
+        print(f"   Model dimension: {d_model}")
+        print(f"   Attention heads: {n_heads}")
+        print(f"   Transformer layers: {n_layers}")
+        print(f"   Max sequence length: {max_seq_len}")
 
         self.tok_emb = Embedding(vocab_size, d_model)
         self.layers = []
@@ -113,7 +113,7 @@ class SimpleLLM(Module):
         self.norm_f = RMSNorm(d_model)
         self.head = Linear(d_model, vocab_size)
 
-        print(f"   总参数数量: {self.count_params():,}")
+        print(f"   Total parameters: {self.count_params():,}")
 
     def param_list(self):
         params = [self.tok_emb.weight]
@@ -197,24 +197,24 @@ class SimpleLLM(Module):
 
     def generate(self, tokenizer, prompt, max_new_tokens=50, temperature=0.8, verbose=False):
         """
-        生成文本
+        Generate text
 
-        参数:
-        - prompt: 输入提示
-        - max_new_tokens: 最大生成token数
-        - temperature: 温度参数（控制随机性）
-        - verbose: 是否显示详细过程
+        Parameters:
+        - prompt: input prompt
+        - max_new_tokens: maximum number of tokens to generate
+        - temperature: temperature parameter (controls randomness)
+        - verbose: whether to show detailed process
         """
         _lib.nt_train_mode(0)
         ctx = tokenizer.encode(prompt)
 
         if verbose:
-            print(f"\n🎯 开始生成文本:")
-            print(f"   输入提示: '{prompt}'")
-            print(f"   最大生成长度: {max_new_tokens}")
-            print(f"   温度参数: {temperature}")
-            print(f"   编码后的输入: {ctx}")
-            print(f"\n📝 生成过程:")
+            print(f"\n🎯 Starting text generation:")
+            print(f"   Input prompt: '{prompt}'")
+            print(f"   Max generation length: {max_new_tokens}")
+            print(f"   Temperature: {temperature}")
+            print(f"   Encoded input: {ctx}")
+            print(f"\n📝 Generation process:")
 
         for i in range(max_new_tokens):
             if len(ctx) > self.max_seq_len:
@@ -274,83 +274,83 @@ class SimpleLLM(Module):
 
             if verbose and i < 10:
                 next_char = tokenizer.decode([next_id])
-                print(f"   步骤 {i+1}: 生成 '{next_char}' (token {next_id})")
+                print(f"   Step {i+1}: generated '{next_char}' (token {next_id})")
 
         result = tokenizer.decode(ctx)
         if verbose:
-            print(f"\n✅ 生成完成!")
-            print(f"   最终结果: '{result}'")
+            print(f"\n✅ Generation complete!")
+            print(f"   Final result: '{result}'")
         return result
 
 
 def demonstrate_tokenizer():
-    """演示分词器的工作原理"""
+    """Demonstrate how the tokenizer works"""
     print("\n" + "="*60)
-    print("🔤 分词器演示")
+    print("🔤 Tokenizer Demo")
     print("="*60)
 
-    sample_text = "人工智能很有趣"
+    sample_text = "AI is fascinating"
     tokenizer = SimpleTokenizer(sample_text)
 
-    # 演示编码过程
-    tokenizer.demo_encoding("人工智能")
-    tokenizer.demo_encoding("很有趣")
+    # Demonstrate encoding process
+    tokenizer.demo_encoding("AI is")
+    tokenizer.demo_encoding("fascinating")
 
-    print(f"\n🔍 词汇表映射:")
+    print(f"\n🔍 Vocabulary mapping:")
     for char, idx in list(tokenizer.char_to_idx.items())[:5]:
         print(f"   '{char}' → {idx}")
 
 def demonstrate_attention():
-    """演示注意力机制的工作原理"""
+    """Demonstrate how the attention mechanism works"""
     print("\n" + "="*60)
-    print("🔍 注意力机制演示")
+    print("🔍 Attention Mechanism Demo")
     print("="*60)
 
-    print("\n💡 注意力机制就像人类阅读时的眼球运动:")
-    print("   当我们读到'他'这个代词时，眼睛会回头寻找'他'指的是谁")
-    print("   注意力机制让计算机也能做到这一点")
+    print("\n💡 The attention mechanism is like eye movement when humans read:")
+    print("   When we read a pronoun like 'he', our eyes look back to find who 'he' refers to")
+    print("   The attention mechanism enables computers to do the same thing")
 
-    print("\n🔧 notorch 中的注意力实现:")
-    print("   RMSNorm → Q/K/V投影 → RoPE位置编码 → 缩放点积注意力 → 因果掩码")
-    print("   所有计算在C层面完成，通过ctypes调用libnotorch")
+    print("\n🔧 Attention implementation in notorch:")
+    print("   RMSNorm → Q/K/V projection → RoPE positional encoding → scaled dot-product attention → causal mask")
+    print("   All computation is done at the C level, called via ctypes through libnotorch")
 
-    # 演示张量操作
+    # Demonstrate tensor operations
     t = Tensor.zeros(8)
-    print(f"\n📊 创建notorch张量: 大小 {t.numel}")
-    print("   notorch张量操作成功!")
+    print(f"\n📊 Created notorch tensor: size {t.numel}")
+    print("   notorch tensor operation successful!")
 
 def train_and_demo():
-    """训练模型并演示生成效果"""
+    """Train the model and demonstrate text generation"""
     print("\n" + "="*60)
-    print("🎓 模型训练与生成演示")
+    print("🎓 Model Training and Generation Demo")
     print("="*60)
 
-    # 准备训练数据
-    text = """人工智能是计算机科学的一个分支。机器学习是人工智能的重要组成部分。深度学习使用神经网络来模拟人脑。大语言模型能够理解和生成人类语言。自然语言处理是人工智能的重要应用领域。"""
+    # Prepare training data
+    text = """Artificial intelligence is a branch of computer science. Machine learning is an important part of artificial intelligence. Deep learning uses neural networks to simulate the human brain. Large language models can understand and generate human language. Natural language processing is an important application area of artificial intelligence."""
 
-    print(f"📚 训练数据长度: {len(text)} 字符")
+    print(f"📚 Training data length: {len(text)} characters")
 
-    # 初始化分词器和模型
+    # Initialize tokenizer and model
     tokenizer = SimpleTokenizer(text)
     model = SimpleLLM(vocab_size=tokenizer.vocab_size, d_model=64, n_heads=4, n_layers=2)
 
-    # 准备训练数据
+    # Prepare training data
     input_ids = tokenizer.encode(text)
     lr = 0.01
 
-    print(f"\n🏋️ 开始训练...")
+    print(f"\n🏋️ Starting training...")
     losses = []
 
     for epoch in range(200):
-        # 随机选择一个序列片段
+        # Randomly select a sequence segment
         start_idx = random.randint(0, max(0, len(input_ids) - model.max_seq_len - 1))
         end_idx = start_idx + model.max_seq_len
 
-        # 输入和目标
+        # Input and target
         token_ids = input_ids[start_idx:end_idx]
         target_ids = input_ids[start_idx+1:end_idx+1]
 
-        # 前向传播 + 反向传播
+        # Forward pass + backward pass
         loss_idx, loss_val = model.forward_train(token_ids, target_ids)
         model.backward_step(loss_idx, loss_val, lr)
 
@@ -359,36 +359,36 @@ def train_and_demo():
         if epoch % 50 == 0:
             print(f"   Epoch {epoch:3d}, Loss: {loss_val:.4f}")
 
-    print(f"✅ 训练完成! 最终损失: {losses[-1]:.4f}")
+    print(f"✅ Training complete! Final loss: {losses[-1]:.4f}")
 
-    # 测试生成
-    print(f"\n🎯 文本生成测试:")
-    test_prompts = ["人工智能", "机器学习", "深度学习"]
+    # Test generation
+    print(f"\n🎯 Text generation test:")
+    test_prompts = ["Artificial", "Machine", "Deep"]
 
     for prompt in test_prompts:
-        print(f"\n📝 输入: '{prompt}'")
+        print(f"\n📝 Input: '{prompt}'")
         generated_text = model.generate(tokenizer, prompt, max_new_tokens=20, temperature=0.8)
-        print(f"🤖 生成: {generated_text}")
+        print(f"🤖 Generated: {generated_text}")
 
 def interactive_demo():
-    """交互式演示"""
+    """Interactive demo"""
     print("\n" + "="*60)
-    print("🎮 交互式演示")
+    print("🎮 Interactive Demo")
     print("="*60)
 
-    print("欢迎来到LLM交互式演示! (notorch版)")
-    print("你可以选择以下演示:")
-    print("1. 分词器演示")
-    print("2. 注意力机制演示")
-    print("3. 完整训练和生成演示")
-    print("4. 全部演示")
+    print("Welcome to the LLM Interactive Demo! (notorch version)")
+    print("You can choose from the following demos:")
+    print("1. Tokenizer demo")
+    print("2. Attention mechanism demo")
+    print("3. Full training and generation demo")
+    print("4. All demos")
 
     while True:
         try:
-            choice = input("\n请选择 (1-4, 或 'q' 退出): ").strip()
+            choice = input("\nPlease choose (1-4, or 'q' to quit): ").strip()
 
             if choice == 'q':
-                print("👋 再见!")
+                print("👋 Goodbye!")
                 break
             elif choice == '1':
                 demonstrate_tokenizer()
@@ -401,19 +401,19 @@ def interactive_demo():
                 demonstrate_attention()
                 train_and_demo()
             else:
-                print("❌ 无效选择，请输入 1-4 或 'q'")
+                print("❌ Invalid choice, please enter 1-4 or 'q'")
 
         except KeyboardInterrupt:
-            print("\n👋 再见!")
+            print("\n👋 Goodbye!")
             break
         except Exception as e:
-            print(f"❌ 发生错误: {e}")
+            print(f"❌ An error occurred: {e}")
 
 if __name__ == "__main__":
-    print("🚀 零基础LLM教程 - 交互式演示")
+    print("🚀 LLM Tutorial from Scratch - Interactive Demo")
     print("="*60)
-    print("这个程序将带你体验LLM的核心组件和工作原理")
+    print("This program will walk you through the core components and principles of LLMs")
     print("notorch version — no PyTorch. Pure C backend.")
 
-    # 运行交互式演示
+    # Run interactive demo
     interactive_demo()
