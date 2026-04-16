@@ -1,0 +1,26 @@
+# Build artifacts
+*.so
+*.dylib
+*.dll
+*.o
+*.a
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Model weights
+*.mem
+*.bin
+*.weights
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
