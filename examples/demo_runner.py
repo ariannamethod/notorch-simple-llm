@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-零基础LLM教程 - 非交互式演示代码
-直接运行所有演示，无需用户输入
+Beginner LLM Tutorial - Non-interactive Demo Code
+Runs all demos directly, no user input required
 
 notorch version — no PyTorch. Pure C backend via ctypes.
 """
@@ -21,12 +21,12 @@ from ariannamethod.notorch_nn import (
 )
 from ariannamethod.chuck import ChuckOptimizer
 
-# 设置随机种子，确保结果可复现
+# Set random seed to ensure reproducible results
 nt_seed(42)
 random.seed(42)
 
 class SimpleTokenizer:
-    """简单的字符级分词器"""
+    """Simple character-level tokenizer"""
     def __init__(self, text):
         self.chars = sorted(list(set(text)))
         self.vocab_size = len(self.chars)
@@ -41,7 +41,7 @@ class SimpleTokenizer:
 
 
 class SimpleLLM(Module):
-    """简化版大语言模型 — backed by notorch"""
+    """Simplified large language model — backed by notorch"""
     def __init__(self, vocab_size, d_model=128, n_heads=4, n_layers=2, max_seq_len=64):
         super().__init__()
         self.vocab_size = vocab_size
@@ -219,132 +219,132 @@ class SimpleLLM(Module):
 
 
 def demonstrate_tokenizer():
-    """演示分词器"""
+    """Demonstrate the tokenizer"""
     print("\n" + "="*60)
-    print("🔤 分词器演示")
+    print("🔤 Tokenizer Demo")
     print("="*60)
 
-    sample_text = "人工智能很有趣"
+    sample_text = "AI is fascinating"
     tokenizer = SimpleTokenizer(sample_text)
 
-    print(f"📚 训练文本: '{sample_text}'")
-    print(f"🔍 词汇表大小: {tokenizer.vocab_size}")
-    print(f"📝 包含字符: {tokenizer.chars}")
+    print(f"📚 Training text: '{sample_text}'")
+    print(f"🔍 Vocabulary size: {tokenizer.vocab_size}")
+    print(f"📝 Characters: {tokenizer.chars}")
 
-    # 演示编码
-    test_text = "人工智能"
+    # Demonstrate encoding
+    test_text = "AI is"
     encoded = tokenizer.encode(test_text)
     decoded = tokenizer.decode(encoded)
 
-    print(f"\n📝 编码演示:")
-    print(f"   原始文本: '{test_text}'")
-    print(f"   编码结果: {encoded}")
-    print(f"   解码验证: '{decoded}'")
+    print(f"\n📝 Encoding demo:")
+    print(f"   Original text: '{test_text}'")
+    print(f"   Encoded result: {encoded}")
+    print(f"   Decoded verification: '{decoded}'")
 
 def demonstrate_model_training():
-    """演示模型训练和生成"""
+    """Demonstrate model training and generation"""
     print("\n" + "="*60)
-    print("🎓 模型训练与生成演示")
+    print("🎓 Model Training and Generation Demo")
     print("="*60)
 
-    # 准备训练数据
-    text = """人工智能是计算机科学的一个分支。机器学习是人工智能的重要组成部分。深度学习使用神经网络来模拟人脑。大语言模型能够理解和生成人类语言。自然语言处理是人工智能的重要应用领域。"""
+    # Prepare training data
+    text = """Artificial intelligence is a branch of computer science. Machine learning is a key component of artificial intelligence. Deep learning uses neural networks to simulate the human brain. Large language models can understand and generate human language. Natural language processing is an important application area of artificial intelligence."""
 
-    print(f"📚 训练数据长度: {len(text)} 字符")
+    print(f"📚 Training data length: {len(text)} characters")
 
-    # 初始化分词器和模型
+    # Initialize tokenizer and model
     tokenizer = SimpleTokenizer(text)
     model = SimpleLLM(vocab_size=tokenizer.vocab_size, d_model=64, n_heads=4, n_layers=2)
 
-    print(f"🤖 模型信息:")
-    print(f"   词汇表大小: {tokenizer.vocab_size}")
-    print(f"   模型参数: {model.count_params():,}")
+    print(f"🤖 Model info:")
+    print(f"   Vocabulary size: {tokenizer.vocab_size}")
+    print(f"   Model parameters: {model.count_params():,}")
 
-    # 准备训练数据
+    # Prepare training data
     input_ids = tokenizer.encode(text)
     lr = 0.01
 
-    print(f"\n🏋️ 开始训练...")
+    print(f"\n🏋️ Starting training...")
 
     for epoch in range(100):
-        # 随机选择一个序列片段
+        # Randomly select a sequence segment
         start_idx = random.randint(0, max(0, len(input_ids) - model.max_seq_len - 1))
         end_idx = start_idx + model.max_seq_len
 
-        # 输入和目标
+        # Input and target
         token_ids = input_ids[start_idx:end_idx]
         target_ids = input_ids[start_idx+1:end_idx+1]
 
-        # 前向传播 + 反向传播
+        # Forward pass + backward pass
         loss_idx, loss_val = model.forward_train(token_ids, target_ids)
         model.backward_step(loss_idx, loss_val, lr)
 
         if epoch % 25 == 0:
             print(f"   Epoch {epoch:3d}, Loss: {loss_val:.4f}")
 
-    print(f"✅ 训练完成!")
+    print(f"✅ Training complete!")
 
-    # 测试生成
-    print(f"\n🎯 文本生成测试:")
-    test_prompts = ["人工智能", "机器学习", "深度学习"]
+    # Test generation
+    print(f"\n🎯 Text generation test:")
+    test_prompts = ["Artificial intel", "Machine learning", "Deep learning"]
 
     for prompt in test_prompts:
-        print(f"\n📝 输入: '{prompt}'")
+        print(f"\n📝 Input: '{prompt}'")
         generated_text = model.generate(tokenizer, prompt, max_new_tokens=15, temperature=0.8)
-        print(f"🤖 生成: {generated_text}")
+        print(f"🤖 Generated: {generated_text}")
 
 def demonstrate_attention_concept():
-    """演示注意力机制概念"""
+    """Demonstrate the attention mechanism concept"""
     print("\n" + "="*60)
-    print("🔍 注意力机制概念演示")
+    print("🔍 Attention Mechanism Concept Demo")
     print("="*60)
 
-    print("💡 注意力机制的生活例子:")
-    print("   想象你在嘈杂的餐厅里和朋友聊天")
-    print("   你的大脑会自动过滤掉周围的噪音")
-    print("   专注于朋友的声音")
-    print("   这就是注意力的作用!")
+    print("💡 A real-life example of attention:")
+    print("   Imagine you are chatting with a friend in a noisy restaurant")
+    print("   Your brain automatically filters out the surrounding noise")
+    print("   and focuses on your friend's voice")
+    print("   That is how attention works!")
 
-    print("\n🧠 在语言理解中:")
-    print("   句子: '小明把书放在桌子上，然后他去了图书馆'")
-    print("   当读到'他'时，注意力会回到'小明'")
-    print("   因为我们知道'他'指的是小明")
+    print("\n🧠 In language understanding:")
+    print("   Sentence: 'Alice put the book on the table, then she went to the library'")
+    print("   When reading 'she', attention goes back to 'Alice'")
+    print("   Because we know 'she' refers to Alice")
 
-    print("\n🔧 计算机如何实现:")
-    print("   1. Query (查询): 我想了解什么？")
-    print("   2. Key (键): 每个词能提供什么信息？")
-    print("   3. Value (值): 每个词的具体内容")
-    print("   4. 计算相关性分数")
-    print("   5. 根据分数加权组合信息")
+    print("\n🔧 How computers implement this:")
+    print("   1. Query: What do I want to know?")
+    print("   2. Key: What information can each word provide?")
+    print("   3. Value: The actual content of each word")
+    print("   4. Compute relevance scores")
+    print("   5. Combine information using weighted scores")
 
-    print("\n🔧 notorch 实现:")
-    print("   RMSNorm → Q/K/V投影 → RoPE位置编码 → 因果注意力 → 输出投影")
-    print("   SwiGLU前馈: gate*up → down (比ReLU更高效)")
+    print("\n🔧 notorch implementation:")
+    print("   RMSNorm → Q/K/V projection → RoPE positional encoding → causal attention → output projection")
+    print("   SwiGLU feed-forward: gate*up → down (more efficient than ReLU)")
 
 def main():
-    """主函数 - 运行所有演示"""
-    print("🚀 零基础LLM教程 - 完整演示")
+    """Main function - run all demos"""
+    print("🚀 Beginner LLM Tutorial - Full Demo")
     print("="*60)
-    print("这个程序将展示LLM的核心组件和工作原理")
+    print("This program demonstrates the core components and workings of an LLM")
     print("notorch version — no PyTorch. Pure C backend.")
 
-    # 运行所有演示
+    # Run all demos
     demonstrate_tokenizer()
     demonstrate_attention_concept()
     demonstrate_model_training()
 
     print("\n" + "="*60)
-    print("🎉 演示完成!")
+    print("🎉 Demo complete!")
     print("="*60)
-    print("通过这些演示，你已经了解了:")
-    print("✅ 分词器如何将文字转换为数字")
-    print("✅ 注意力机制的基本概念")
-    print("✅ 完整的LLM训练和生成过程")
-    print("\n💡 下一步建议:")
-    print("   1. 尝试修改模型参数，观察效果变化")
-    print("   2. 使用更多的训练数据")
-    print("   3. 学习更高级的LLM技术")
-    print("   4. 阅读相关的研究论文")
+    print("Through these demos, you have learned about:")
+    print("✅ How a tokenizer converts text into numbers")
+    print("✅ The basic concept of the attention mechanism")
+    print("✅ The complete LLM training and generation process")
+    print("\n💡 Suggested next steps:")
+    print("   1. Try modifying model parameters and observe the effects")
+    print("   2. Use more training data")
+    print("   3. Learn more advanced LLM techniques")
+    print("   4. Read related research papers")
 
 if __name__ == "__main__":
     main()

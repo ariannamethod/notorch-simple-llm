@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-Minimal LLM Implementation - Understand core LLM principles with minimal code
-Function: Implement a simplified Transformer language model with attention mechanism
+Train a character-level LLM on Bram Stoker's Dracula using notorch.
 
-notorch version — no PyTorch. Pure C backend via ctypes.
-RMSNorm, SwiGLU, RoPE, multi-head causal attention.
+Downloads/reads dracula.txt, trains a SimpleLLM, saves weights.
+No PyTorch. Pure C backend via ctypes.
+
+Usage:
+    python train_dracula.py
 """
 
 import ctypes
@@ -13,7 +15,7 @@ import random
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ariannamethod.notorch_nn import (
     _lib, _get_tensor_struct, _NtTapeEntry, _NtTensor,
@@ -22,19 +24,17 @@ from ariannamethod.notorch_nn import (
 )
 from ariannamethod.chuck import ChuckOptimizer
 
-# Set random seed to ensure reproducibility
+# Set random seed for reproducibility
 nt_seed(42)
 random.seed(42)
+
 
 class SimpleTokenizer:
     """Simple character-level tokenizer"""
     def __init__(self, text):
-        # Get all unique characters, sort them, and build the vocabulary
         self.chars = sorted(list(set(text)))
         self.vocab_size = len(self.chars)
-        # Character to index mapping
         self.char_to_idx = {ch: i for i, ch in enumerate(self.chars)}
-        # Index to character mapping
         self.idx_to_char = {i: ch for i, ch in enumerate(self.chars)}
 
     def encode(self, text):
@@ -47,10 +47,9 @@ class SimpleTokenizer:
 
 
 class SimpleLLM(Module):
-    """Simplified large language model — backed by notorch
+    """Simplified LLM — backed by notorch
 
     Architecture: RMSNorm + SwiGLU + RoPE + multi-head causal attention.
-    Same core as GPT/LLaMA, but tiny and educational.
     """
     def __init__(self, vocab_size, d_model=128, n_heads=4, n_layers=2, max_seq_len=64):
         super().__init__()
@@ -66,33 +65,30 @@ class SimpleLLM(Module):
         hidden = 64 * ((hidden + 63) // 64)
         self.hidden = hidden
 
-        # Token embedding layer: convert token indices to vectors
         self.tok_emb = Embedding(vocab_size, d_model)
 
-        # Stack of Transformer blocks
         self.layers = []
         for l in range(n_layers):
             layer = {
-                'rms1': RMSNorm(d_model),          # Pre-attention normalization
-                'wq': Linear(d_model, d_model),      # Query projection
-                'wk': Linear(d_model, d_model),      # Key projection
-                'wv': Linear(d_model, d_model),      # Value projection
-                'wo': Linear(d_model, d_model),      # Output projection
-                'rms2': RMSNorm(d_model),          # Pre-FFN normalization
-                'w_gate': Linear(d_model, hidden),   # SwiGLU gate
-                'w_up': Linear(d_model, hidden),     # SwiGLU up
-                'w_down': Linear(hidden, d_model),   # SwiGLU down
+                'rms1': RMSNorm(d_model),
+                'wq': Linear(d_model, d_model),
+                'wk': Linear(d_model, d_model),
+                'wv': Linear(d_model, d_model),
+                'wo': Linear(d_model, d_model),
+                'rms2': RMSNorm(d_model),
+                'w_gate': Linear(d_model, hidden),
+                'w_up': Linear(d_model, hidden),
+                'w_down': Linear(hidden, d_model),
             }
             for k, v in layer.items():
                 setattr(self, f'l{l}_{k}', v)
             self.layers.append(layer)
 
-        # Final normalization and output head
         self.norm_f = RMSNorm(d_model)
         self.head = Linear(d_model, vocab_size)
 
     def param_list(self):
-        """Return all parameters in forward pass order"""
+        """Return all parameters in forward-pass order"""
         params = [self.tok_emb.weight]
         for l in self.layers:
             params.extend([
@@ -117,9 +113,8 @@ class SimpleLLM(Module):
 
         params = self.param_list()
         tape_ids = [_lib.nt_tape_param(p._ptr) for p in params]
-        _lib.nt_tape_no_decay(tape_ids[0])  # No weight decay for embedding
+        _lib.nt_tape_no_decay(tape_ids[0])  # No weight decay on embeddings
 
-        # Build token and target tensors
         tok_t = Tensor.zeros(CTX)
         tgt_t = Tensor.zeros(CTX)
         tok_t.set_data([float(x) for x in token_ids])
@@ -129,7 +124,7 @@ class SimpleLLM(Module):
         tok_t._owns = False
         tgt_t._owns = False
 
-        # Forward: embedding → transformer blocks → rmsnorm → lm_head → cross_entropy
+        # Forward: embedding -> transformer blocks -> rmsnorm -> lm_head -> cross_entropy
         pi = 0
         h = _lib.nt_seq_embedding(tape_ids[pi], -1, tok_idx, CTX, DIM); pi += 1
 
@@ -140,7 +135,7 @@ class SimpleLLM(Module):
             rms2=tape_ids[pi]; pi+=1
             wg=tape_ids[pi]; pi+=1; wu=tape_ids[pi]; pi+=1; wd=tape_ids[pi]; pi+=1
 
-            # Multi-head attention: RMSNorm → Q/K/V → RoPE → causal attention → output projection + residual
+            # Multi-head attention: RMSNorm -> Q/K/V -> RoPE -> causal attention -> output proj + residual
             xn = _lib.nt_seq_rmsnorm(h, rms1, CTX, DIM)
             q = _lib.nt_rope(_lib.nt_seq_linear(wq, xn, CTX), CTX, HD)
             k = _lib.nt_rope(_lib.nt_seq_linear(wk, xn, CTX), CTX, HD)
@@ -148,7 +143,7 @@ class SimpleLLM(Module):
             attn = _lib.nt_mh_causal_attention(q, k, v, CTX, HD)
             h = _lib.nt_add(h, _lib.nt_seq_linear(wo, attn, CTX))
 
-            # SwiGLU feed-forward network: RMSNorm → gate/up → SiLU(gate)*up → down + residual
+            # SwiGLU FFN: RMSNorm -> gate/up -> SiLU(gate)*up -> down + residual
             xn = _lib.nt_seq_rmsnorm(h, rms2, CTX, DIM)
             gate = _lib.nt_silu(_lib.nt_seq_linear(wg, xn, CTX))
             up = _lib.nt_seq_linear(wu, xn, CTX)
@@ -224,7 +219,7 @@ class SimpleLLM(Module):
             hf = _lib.nt_seq_rmsnorm(h, rmsf, CTX, self.d_model)
             logits_idx = _lib.nt_seq_linear(head_i, hf, CTX)
 
-            # Read logits at the last position
+            # Read logits for the last position
             tape_ptr = _lib.nt_tape_get()
             entry_size = ctypes.sizeof(_NtTapeEntry)
             tape_addr = ctypes.cast(tape_ptr, ctypes.c_void_p).value
@@ -245,60 +240,89 @@ class SimpleLLM(Module):
         return tokenizer.decode(ctx)
 
 
-def train_simple_model():
-    """Example of training a simple model"""
-    # Prepare training data (using a simple text here)
-    text = """
-    Artificial intelligence is a branch of computer science that attempts to understand the essence of intelligence and produce intelligent machines that respond in ways similar to human intelligence.
-    Machine learning is an important branch of artificial intelligence that uses algorithms to enable computers to learn from data and make decisions or predictions.
-    Deep learning is a subset of machine learning that uses neural networks to simulate how the human brain works.
-    Large language models are an important application of deep learning in natural language processing, capable of understanding and generating human language.
-    """
+def save_weights(model, path):
+    """Save model weights using notorch's nt_save"""
+    params = model.param_list()
+    n = len(params)
+    arr = (ctypes.c_void_p * n)(*[p._ptr for p in params])
+    _lib.nt_save(path.encode(), arr, n)
+    print(f"Weights saved to {path} ({os.path.getsize(path):,} bytes)")
+
+
+def train_on_dracula():
+    """Train a character-level LLM on Dracula by Bram Stoker"""
+
+    # Load Dracula text
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    dracula_path = os.path.join(script_dir, 'dracula.txt')
+
+    if not os.path.exists(dracula_path):
+        print(f"Error: {dracula_path} not found.")
+        print("Please place dracula.txt in the project root directory.")
+        sys.exit(1)
+
+    with open(dracula_path, 'r', encoding='utf-8') as f:
+        text = f.read()
+
+    print(f"=== Training on Dracula by Bram Stoker ===")
+    print(f"Text length: {len(text):,} characters")
 
     # Initialize tokenizer and model
     tokenizer = SimpleTokenizer(text)
-    model = SimpleLLM(vocab_size=tokenizer.vocab_size)
+    model = SimpleLLM(
+        vocab_size=tokenizer.vocab_size,
+        d_model=128,
+        n_heads=4,
+        n_layers=2,
+        max_seq_len=64,
+    )
 
     print(f"Vocabulary size: {tokenizer.vocab_size}")
-    print(f"Model parameter count: {model.count_params():,}")
+    print(f"Model parameters: {model.count_params():,}")
 
     # Prepare training data
     input_ids = tokenizer.encode(text)
     lr = 0.001
+    n_epochs = 500
 
-    print("\nStarting training...")
-    for epoch in range(100):
-        # Randomly select a sequence segment
+    print(f"\nStarting training ({n_epochs} steps)...")
+
+    for epoch in range(n_epochs):
+        # Random sequence window from the text
         start_idx = random.randint(0, max(0, len(input_ids) - model.max_seq_len - 1))
         end_idx = start_idx + model.max_seq_len
 
-        # Input and target (target is input shifted right by one position)
         token_ids = input_ids[start_idx:end_idx]
-        target_ids = input_ids[start_idx+1:end_idx+1]
+        target_ids = input_ids[start_idx + 1:end_idx + 1]
 
-        # Forward pass + backward pass
+        # Forward + backward
         loss_idx, loss_val = model.forward_train(token_ids, target_ids)
         model.backward_step(loss_idx, loss_val, lr)
 
-        if epoch % 20 == 0:
-            print(f"Epoch {epoch}, Loss: {loss_val:.4f}")
+        if epoch % 50 == 0:
+            print(f"  Step {epoch:4d}/{n_epochs}, Loss: {loss_val:.4f}")
 
+    print(f"  Step {n_epochs:4d}/{n_epochs}, Loss: {loss_val:.4f}")
     print("Training complete!\n")
 
+    # Save weights
+    weights_dir = os.path.join(script_dir, 'weights')
+    os.makedirs(weights_dir, exist_ok=True)
+    weights_path = os.path.join(weights_dir, 'dracula.weights')
+    save_weights(model, weights_path)
+
     # Test generation
-    print("=== Text Generation Test ===")
-    test_prompts = ["Artificial", "Machine le", "Deep learn"]
+    print("\n=== Text Generation Test ===")
+    test_prompts = ["DRACULA", "The Count", "I am "]
 
     for prompt in test_prompts:
-        generated_text = model.generate(tokenizer, prompt, max_new_tokens=30, temperature=0.8)
-        print(f"Input: '{prompt}'")
-        print(f"Generated: {generated_text}")
-        print("-" * 50)
+        generated = model.generate(tokenizer, prompt, max_new_tokens=100, temperature=0.8)
+        print(f"Prompt: '{prompt}'")
+        print(f"Generated: {generated[:200]}")
+        print("-" * 60)
+
+    return model, tokenizer
+
 
 if __name__ == "__main__":
-    print("=== Minimal LLM Implementation Demo ===")
-    print("This is an educational simplified large language model implementation")
-    print("Contains core Transformer components: attention mechanism, positional encoding, feed-forward network, etc.\n")
-    print("notorch version — no PyTorch. Pure C backend.\n")
-
-    train_simple_model()
+    train_on_dracula()
