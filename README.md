@@ -10,7 +10,7 @@ This implementation is designed for **educational purposes** to help developers 
 - Text generation with autoregressive models
 - The building blocks of modern LLMs like GPT/LLaMA
 
-📖 **[Read the Complete Tutorial](https://blog.csdn.net/jiaquan3011/article/details/149292522?fromshare=blogdetail&sharetype=blogdetail&sharerId=149292522&sharerefer=PC&sharesource=jiaquan3011&sharefrom=from_link)** - Comprehensive Chinese blog explaining LLM concepts and implementation details.
+📖 **[Read the Complete Tutorial](docs/tutorial.md)** - Comprehensive tutorial explaining LLM concepts and implementation details.
 
 ## 🚀 Features
 
@@ -27,6 +27,9 @@ This implementation is designed for **educational purposes** to help developers 
 - `src/minimal_llm.py` - Streamlined version focusing on core logic
 - `ariannamethod/` - notorch C library and Python bindings
 - `examples/` - Demo scripts (interactive and non-interactive)
+- `train_dracula.py` - Train on Bram Stoker's Dracula and save weights
+- `dracula.txt` - Full text of Dracula (training data)
+- `weights/` - Saved model weights
 
 ## 🛠️ Requirements
 
@@ -55,6 +58,12 @@ python src/simple_llm.py
 ```bash
 python src/minimal_llm.py
 ```
+
+### Train on Dracula:
+```bash
+python train_dracula.py
+```
+This trains the model on the full text of Bram Stoker's Dracula and saves weights to `weights/dracula.weights`.
 
 ## 📊 Model Architecture
 
@@ -101,27 +110,27 @@ model.backward_step(loss_idx, loss_val, lr)
 
 ### Text Generation
 ```python
-result = model.generate(tokenizer, "人工智能", max_new_tokens=50)
+result = model.generate(tokenizer, "Artificial", max_new_tokens=50)
 ```
 
 ## 📈 Example Output
 
 ```
-=== 最简LLM实现演示 ===
-词汇表大小: 86
-模型参数数量: 448,640
+=== Minimal LLM Demo ===
+Vocabulary size: 86
+Model parameters: 448,640
 
-开始训练...
+Starting training...
 Epoch 0, Loss: 4.9505
 Epoch 20, Loss: 1.2039
 Epoch 40, Loss: 0.3569
 Epoch 60, Loss: 0.1626
 Epoch 80, Loss: 0.1216
-训练完成！
+Training complete!
 
-=== 文本生成测试 ===
-输入: '人工智能'
-生成: 人工智能的一个重要分支，它通过算法使计算机能够从数据中学习并做出决策
+=== Text Generation Test ===
+Input: 'Artificial'
+Generated: Artificial intelligence is an important branch that enables computers to learn from data
 ```
 
 ## 🎓 Educational Value
@@ -160,7 +169,7 @@ h = _lib.nt_add(h, _lib.nt_seq_linear(wo, attn, CTX))
 
 ## 📚 Learning Path
 
-1. **📖 [Read the Complete Tutorial](https://blog.csdn.net/jiaquan3011/article/details/149292522?fromshare=blogdetail&sharetype=blogdetail&sharerId=149292522&sharerefer=PC&sharesource=jiaquan3011&sharefrom=from_link)** - Start with the comprehensive blog post (Chinese)
+1. **📖 [Read the Complete Tutorial](docs/tutorial.md)** - Start with the comprehensive tutorial
 2. **Start with `src/minimal_llm.py`** - Understand the core structure
 3. **Study `src/simple_llm.py`** - Learn detailed implementation
 4. **Read the technical blog** - Understand the theory
