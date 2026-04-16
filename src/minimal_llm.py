@@ -2,12 +2,25 @@
 """
 最简LLM实现 - 核心代码版本
 用最少的代码展示LLM的核心原理
+
+notorch version — no PyTorch. Pure C backend via ctypes.
 """
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import ctypes
 import math
+import random
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from ariannamethod.notorch_nn import (
+    _lib, _get_tensor_struct, _NtTapeEntry, _NtTensor,
+    Tensor, Parameter, Module, Linear, Embedding, RMSNorm,
+    softmax, multinomial, seed as nt_seed,
+)
+from ariannamethod.chuck import ChuckOptimizer
+
 
 class SimpleTokenizer:
     def __init__(self, text):
@@ -15,133 +28,222 @@ class SimpleTokenizer:
         self.vocab_size = len(self.chars)
         self.char_to_idx = {ch: i for i, ch in enumerate(self.chars)}
         self.idx_to_char = {i: ch for i, ch in enumerate(self.chars)}
-    
+
     def encode(self, text):
         return [self.char_to_idx[ch] for ch in text]
-    
+
     def decode(self, indices):
         return ''.join([self.idx_to_char[i] for i in indices])
 
-class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, n_heads):
-        super().__init__()
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.head_dim = d_model // n_heads
-        
-        self.q_linear = nn.Linear(d_model, d_model)
-        self.k_linear = nn.Linear(d_model, d_model)
-        self.v_linear = nn.Linear(d_model, d_model)
-        self.out_linear = nn.Linear(d_model, d_model)
-        
-    def forward(self, x):
-        B, T, C = x.shape
-        
-        # 生成Q, K, V
-        Q = self.q_linear(x).view(B, T, self.n_heads, self.head_dim).transpose(1, 2)
-        K = self.k_linear(x).view(B, T, self.n_heads, self.head_dim).transpose(1, 2)
-        V = self.v_linear(x).view(B, T, self.n_heads, self.head_dim).transpose(1, 2)
-        
-        # 计算注意力
-        scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.head_dim)
-        
-        # 因果掩码
-        mask = torch.triu(torch.ones(T, T), diagonal=1).bool()
-        scores.masked_fill_(mask, float('-inf'))
-        
-        # 注意力权重和输出
-        attn = F.softmax(scores, dim=-1)
-        out = torch.matmul(attn, V)
-        
-        # 重塑并输出
-        out = out.transpose(1, 2).contiguous().view(B, T, C)
-        return self.out_linear(out)
 
-class TransformerBlock(nn.Module):
-    def __init__(self, d_model, n_heads):
-        super().__init__()
-        self.attention = MultiHeadAttention(d_model, n_heads)
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.feed_forward = nn.Sequential(
-            nn.Linear(d_model, d_model * 4),
-            nn.ReLU(),
-            nn.Linear(d_model * 4, d_model)
-        )
-        
-    def forward(self, x):
-        x = self.norm1(x + self.attention(x))
-        x = self.norm2(x + self.feed_forward(x))
-        return x
-
-class SimpleLLM(nn.Module):
+class SimpleLLM(Module):
+    """简化版大语言模型 — backed by notorch"""
     def __init__(self, vocab_size, d_model=128, n_heads=4, n_layers=2, max_len=64):
         super().__init__()
+        self.vocab_size = vocab_size
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.n_layers = n_layers
+        self.head_dim = d_model // n_heads
         self.max_len = max_len
-        
-        self.token_emb = nn.Embedding(vocab_size, d_model)
-        self.pos_emb = nn.Embedding(max_len, d_model)
-        self.blocks = nn.ModuleList([TransformerBlock(d_model, n_heads) for _ in range(n_layers)])
-        self.ln_f = nn.LayerNorm(d_model)
-        self.head = nn.Linear(d_model, vocab_size)
-        
-    def forward(self, x):
-        B, T = x.shape
-        pos = torch.arange(T, device=x.device).unsqueeze(0)
-        
-        x = self.token_emb(x) + self.pos_emb(pos)
-        
-        for block in self.blocks:
-            x = block(x)
-            
-        x = self.ln_f(x)
-        return self.head(x)
-    
-    def generate(self, tokenizer, prompt, max_tokens=50):
-        self.eval()
-        tokens = tokenizer.encode(prompt)
-        
-        with torch.no_grad():
-            for _ in range(max_tokens):
-                x = torch.tensor([tokens[-self.max_len:]])
-                logits = self.forward(x)
-                next_token = torch.multinomial(F.softmax(logits[0, -1], dim=-1), 1).item()
-                tokens.append(next_token)
-                
-        return tokenizer.decode(tokens)
+
+        hidden = int(d_model * 8 / 3)
+        hidden = 64 * ((hidden + 63) // 64)
+        self.hidden = hidden
+
+        self.tok_emb = Embedding(vocab_size, d_model)
+        self.layers = []
+        for l in range(n_layers):
+            layer = {
+                'rms1': RMSNorm(d_model),
+                'wq': Linear(d_model, d_model),
+                'wk': Linear(d_model, d_model),
+                'wv': Linear(d_model, d_model),
+                'wo': Linear(d_model, d_model),
+                'rms2': RMSNorm(d_model),
+                'w_gate': Linear(d_model, hidden),
+                'w_up': Linear(d_model, hidden),
+                'w_down': Linear(hidden, d_model),
+            }
+            for k, v in layer.items():
+                setattr(self, f'l{l}_{k}', v)
+            self.layers.append(layer)
+        self.norm_f = RMSNorm(d_model)
+        self.head = Linear(d_model, vocab_size)
+
+    def param_list(self):
+        params = [self.tok_emb.weight]
+        for l in self.layers:
+            params.extend([
+                l['rms1'].weight, l['wq'].weight, l['wk'].weight,
+                l['wv'].weight, l['wo'].weight, l['rms2'].weight,
+                l['w_gate'].weight, l['w_up'].weight, l['w_down'].weight,
+            ])
+        params.extend([self.norm_f.weight, self.head.weight])
+        return params
+
+    def count_params(self):
+        return sum(p.numel for p in self.param_list())
+
+    def forward_train(self, token_ids, target_ids):
+        CTX = len(token_ids)
+        DIM = self.d_model
+        HD = self.head_dim
+
+        _lib.nt_tape_start()
+        _lib.nt_train_mode(1)
+
+        params = self.param_list()
+        tape_ids = [_lib.nt_tape_param(p._ptr) for p in params]
+        _lib.nt_tape_no_decay(tape_ids[0])
+
+        tok_t = Tensor.zeros(CTX)
+        tgt_t = Tensor.zeros(CTX)
+        tok_t.set_data([float(x) for x in token_ids])
+        tgt_t.set_data([float(x) for x in target_ids])
+        tok_idx = _lib.nt_tape_record(tok_t._ptr, 0, -1, -1, ctypes.c_float(0))
+        tgt_idx = _lib.nt_tape_record(tgt_t._ptr, 0, -1, -1, ctypes.c_float(0))
+        tok_t._owns = False
+        tgt_t._owns = False
+
+        pi = 0
+        h = _lib.nt_seq_embedding(tape_ids[pi], -1, tok_idx, CTX, DIM); pi += 1
+
+        for l in range(self.n_layers):
+            rms1=tape_ids[pi]; pi+=1
+            wq=tape_ids[pi]; pi+=1; wk=tape_ids[pi]; pi+=1
+            wv=tape_ids[pi]; pi+=1; wo=tape_ids[pi]; pi+=1
+            rms2=tape_ids[pi]; pi+=1
+            wg=tape_ids[pi]; pi+=1; wu=tape_ids[pi]; pi+=1; wd=tape_ids[pi]; pi+=1
+
+            xn = _lib.nt_seq_rmsnorm(h, rms1, CTX, DIM)
+            q = _lib.nt_rope(_lib.nt_seq_linear(wq, xn, CTX), CTX, HD)
+            k = _lib.nt_rope(_lib.nt_seq_linear(wk, xn, CTX), CTX, HD)
+            v = _lib.nt_seq_linear(wv, xn, CTX)
+            attn = _lib.nt_mh_causal_attention(q, k, v, CTX, HD)
+            h = _lib.nt_add(h, _lib.nt_seq_linear(wo, attn, CTX))
+
+            xn = _lib.nt_seq_rmsnorm(h, rms2, CTX, DIM)
+            gate = _lib.nt_silu(_lib.nt_seq_linear(wg, xn, CTX))
+            up = _lib.nt_seq_linear(wu, xn, CTX)
+            h = _lib.nt_add(h, _lib.nt_seq_linear(wd, _lib.nt_mul(gate, up), CTX))
+
+        rmsf=tape_ids[pi]; pi+=1; head_i=tape_ids[pi]; pi+=1
+        hf = _lib.nt_seq_rmsnorm(h, rmsf, CTX, DIM)
+        logits_idx = _lib.nt_seq_linear(head_i, hf, CTX)
+        loss_idx = _lib.nt_seq_cross_entropy(logits_idx, tgt_idx, CTX, self.vocab_size)
+
+        tape_ptr = _lib.nt_tape_get()
+        entry_size = ctypes.sizeof(_NtTapeEntry)
+        tape_addr = ctypes.cast(tape_ptr, ctypes.c_void_p).value
+        loss_entry = ctypes.cast(
+            tape_addr + loss_idx * entry_size,
+            ctypes.POINTER(_NtTapeEntry)
+        ).contents
+        loss_tensor = ctypes.cast(loss_entry.output, ctypes.POINTER(_NtTensor)).contents
+        loss_val = loss_tensor.data[0]
+
+        return loss_idx, loss_val
+
+    def backward_step(self, loss_idx, loss_val, lr):
+        _lib.nt_tape_backward(loss_idx)
+        _lib.nt_tape_clip_grads(ctypes.c_float(1.0))
+        _lib.nt_tape_chuck_step(ctypes.c_float(lr), ctypes.c_float(loss_val))
+        _lib.nt_tape_clear()
+
+    def generate(self, tokenizer, prompt, max_tokens=50, temperature=0.8):
+        _lib.nt_train_mode(0)
+        ctx = tokenizer.encode(prompt)
+
+        for _ in range(max_tokens):
+            if len(ctx) > self.max_len:
+                ctx = ctx[-self.max_len:]
+            CTX = len(ctx)
+
+            _lib.nt_tape_start()
+            params = self.param_list()
+            tape_ids = [_lib.nt_tape_param(p._ptr) for p in params]
+
+            tok_t = Tensor.zeros(CTX)
+            tgt_t = Tensor.zeros(CTX)
+            tok_t.set_data([float(x) for x in ctx])
+            tok_idx = _lib.nt_tape_record(tok_t._ptr, 0, -1, -1, ctypes.c_float(0))
+            tgt_idx = _lib.nt_tape_record(tgt_t._ptr, 0, -1, -1, ctypes.c_float(0))
+            tok_t._owns = False
+            tgt_t._owns = False
+
+            pi = 0
+            h = _lib.nt_seq_embedding(tape_ids[pi], -1, tok_idx, CTX, self.d_model); pi += 1
+            for l in range(self.n_layers):
+                rms1=tape_ids[pi]; pi+=1
+                wq=tape_ids[pi]; pi+=1; wk=tape_ids[pi]; pi+=1
+                wv=tape_ids[pi]; pi+=1; wo=tape_ids[pi]; pi+=1
+                rms2=tape_ids[pi]; pi+=1
+                wg=tape_ids[pi]; pi+=1; wu=tape_ids[pi]; pi+=1; wd=tape_ids[pi]; pi+=1
+                xn = _lib.nt_seq_rmsnorm(h, rms1, CTX, self.d_model)
+                q = _lib.nt_rope(_lib.nt_seq_linear(wq, xn, CTX), CTX, self.head_dim)
+                k = _lib.nt_rope(_lib.nt_seq_linear(wk, xn, CTX), CTX, self.head_dim)
+                v = _lib.nt_seq_linear(wv, xn, CTX)
+                attn = _lib.nt_mh_causal_attention(q, k, v, CTX, self.head_dim)
+                h = _lib.nt_add(h, _lib.nt_seq_linear(wo, attn, CTX))
+                xn = _lib.nt_seq_rmsnorm(h, rms2, CTX, self.d_model)
+                gate = _lib.nt_silu(_lib.nt_seq_linear(wg, xn, CTX))
+                up = _lib.nt_seq_linear(wu, xn, CTX)
+                h = _lib.nt_add(h, _lib.nt_seq_linear(wd, _lib.nt_mul(gate, up), CTX))
+
+            rmsf=tape_ids[pi]; pi+=1; head_i=tape_ids[pi]; pi+=1
+            hf = _lib.nt_seq_rmsnorm(h, rmsf, CTX, self.d_model)
+            logits_idx = _lib.nt_seq_linear(head_i, hf, CTX)
+
+            tape_ptr = _lib.nt_tape_get()
+            entry_size = ctypes.sizeof(_NtTapeEntry)
+            tape_addr = ctypes.cast(tape_ptr, ctypes.c_void_p).value
+            logits_entry = ctypes.cast(
+                tape_addr + logits_idx * entry_size,
+                ctypes.POINTER(_NtTapeEntry)
+            ).contents
+            logits_t = ctypes.cast(logits_entry.output, ctypes.POINTER(_NtTensor)).contents
+            offset = (CTX - 1) * self.vocab_size
+            raw_logits = [logits_t.data[offset + i] / temperature for i in range(self.vocab_size)]
+
+            probs = softmax(raw_logits)
+            next_id = multinomial(probs)
+            _lib.nt_tape_clear()
+            ctx.append(next_id)
+
+        return tokenizer.decode(ctx)
+
 
 # 使用示例
 if __name__ == "__main__":
+    nt_seed(42)
+    random.seed(42)
+
     # 训练数据
     text = "人工智能是未来科技发展的重要方向。机器学习让计算机能够从数据中学习。深度学习使用神经网络模拟人脑。"
-    
+
     # 初始化
     tokenizer = SimpleTokenizer(text)
     model = SimpleLLM(tokenizer.vocab_size)
-    
+
     print(f"词汇表大小: {tokenizer.vocab_size}")
-    print(f"模型参数: {sum(p.numel() for p in model.parameters()):,}")
-    
+    print(f"模型参数: {model.count_params():,}")
+
     # 简单训练
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     tokens = tokenizer.encode(text)
-    
+    lr = 0.01
+
     for epoch in range(200):
-        x = torch.tensor([tokens[:-1]])
-        y = torch.tensor([tokens[1:]])
-        
-        logits = model(x)
-        loss = F.cross_entropy(logits.view(-1, tokenizer.vocab_size), y.view(-1))
-        
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        
+        token_ids = tokens[:-1]
+        target_ids = tokens[1:]
+
+        loss_idx, loss_val = model.forward_train(token_ids, target_ids)
+        model.backward_step(loss_idx, loss_val, lr)
+
         if epoch % 50 == 0:
-            print(f"Epoch {epoch}, Loss: {loss.item():.4f}")
-    
+            print(f"Epoch {epoch}, Loss: {loss_val:.4f}")
+
     # 生成测试
     print("\n生成测试:")
     result = model.generate(tokenizer, "人工智能", 20)
     print(result)
-
