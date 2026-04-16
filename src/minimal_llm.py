@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-最简LLM实现 - 核心代码版本
-用最少的代码展示LLM的核心原理
+Minimal LLM Implementation - Core Code Version
+Demonstrate the core principles of LLMs with minimal code
 
 notorch version — no PyTorch. Pure C backend via ctypes.
 """
@@ -37,7 +37,7 @@ class SimpleTokenizer:
 
 
 class SimpleLLM(Module):
-    """简化版大语言模型 — backed by notorch"""
+    """Simplified Large Language Model — backed by notorch"""
     def __init__(self, vocab_size, d_model=128, n_heads=4, n_layers=2, max_len=64):
         super().__init__()
         self.vocab_size = vocab_size
@@ -214,22 +214,22 @@ class SimpleLLM(Module):
         return tokenizer.decode(ctx)
 
 
-# 使用示例
+# Usage example
 if __name__ == "__main__":
     nt_seed(42)
     random.seed(42)
 
-    # 训练数据
-    text = "人工智能是未来科技发展的重要方向。机器学习让计算机能够从数据中学习。深度学习使用神经网络模拟人脑。"
+    # Training data
+    text = "Artificial intelligence is an important direction for future technology development. Machine learning enables computers to learn from data. Deep learning uses neural networks to simulate the human brain."
 
-    # 初始化
+    # Initialization
     tokenizer = SimpleTokenizer(text)
     model = SimpleLLM(tokenizer.vocab_size)
 
-    print(f"词汇表大小: {tokenizer.vocab_size}")
-    print(f"模型参数: {model.count_params():,}")
+    print(f"Vocabulary size: {tokenizer.vocab_size}")
+    print(f"Model parameters: {model.count_params():,}")
 
-    # 简单训练
+    # Simple training
     tokens = tokenizer.encode(text)
     lr = 0.01
 
@@ -243,7 +243,7 @@ if __name__ == "__main__":
         if epoch % 50 == 0:
             print(f"Epoch {epoch}, Loss: {loss_val:.4f}")
 
-    # 生成测试
-    print("\n生成测试:")
-    result = model.generate(tokenizer, "人工智能", 20)
+    # Generation test
+    print("\nGeneration test:")
+    result = model.generate(tokenizer, "Artificial", 20)
     print(result)
