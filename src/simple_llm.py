@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-最简LLM实现 - 用最少代码理解大语言模型核心原理
-功能：实现一个包含注意力机制的简化版Transformer语言模型
+Minimal LLM Implementation - Understand core LLM principles with minimal code
+Function: Implement a simplified Transformer language model with attention mechanism
 
 notorch version — no PyTorch. Pure C backend via ctypes.
 RMSNorm, SwiGLU, RoPE, multi-head causal attention.
@@ -22,32 +22,32 @@ from ariannamethod.notorch_nn import (
 )
 from ariannamethod.chuck import ChuckOptimizer
 
-# 设置随机种子，确保结果可复现
+# Set random seed to ensure reproducibility
 nt_seed(42)
 random.seed(42)
 
 class SimpleTokenizer:
-    """简单的字符级分词器"""
+    """Simple character-level tokenizer"""
     def __init__(self, text):
-        # 获取所有唯一字符并排序，构建词汇表
+        # Get all unique characters, sort them, and build the vocabulary
         self.chars = sorted(list(set(text)))
         self.vocab_size = len(self.chars)
-        # 字符到索引的映射
+        # Character to index mapping
         self.char_to_idx = {ch: i for i, ch in enumerate(self.chars)}
-        # 索引到字符的映射
+        # Index to character mapping
         self.idx_to_char = {i: ch for i, ch in enumerate(self.chars)}
 
     def encode(self, text):
-        """将文本编码为token索引列表"""
+        """Encode text into a list of token indices"""
         return [self.char_to_idx[ch] for ch in text]
 
     def decode(self, indices):
-        """将token索引列表解码为文本"""
+        """Decode a list of token indices into text"""
         return ''.join([self.idx_to_char[i] for i in indices])
 
 
 class SimpleLLM(Module):
-    """简化版大语言模型 — backed by notorch
+    """Simplified large language model — backed by notorch
 
     Architecture: RMSNorm + SwiGLU + RoPE + multi-head causal attention.
     Same core as GPT/LLaMA, but tiny and educational.
@@ -66,19 +66,19 @@ class SimpleLLM(Module):
         hidden = 64 * ((hidden + 63) // 64)
         self.hidden = hidden
 
-        # Token嵌入层：将token索引转换为向量
+        # Token embedding layer: convert token indices to vectors
         self.tok_emb = Embedding(vocab_size, d_model)
 
-        # Transformer块堆叠
+        # Stack of Transformer blocks
         self.layers = []
         for l in range(n_layers):
             layer = {
-                'rms1': RMSNorm(d_model),          # 注意力前归一化
-                'wq': Linear(d_model, d_model),      # Query投影
-                'wk': Linear(d_model, d_model),      # Key投影
-                'wv': Linear(d_model, d_model),      # Value投影
-                'wo': Linear(d_model, d_model),      # 输出投影
-                'rms2': RMSNorm(d_model),          # FFN前归一化
+                'rms1': RMSNorm(d_model),          # Pre-attention normalization
+                'wq': Linear(d_model, d_model),      # Query projection
+                'wk': Linear(d_model, d_model),      # Key projection
+                'wv': Linear(d_model, d_model),      # Value projection
+                'wo': Linear(d_model, d_model),      # Output projection
+                'rms2': RMSNorm(d_model),          # Pre-FFN normalization
                 'w_gate': Linear(d_model, hidden),   # SwiGLU gate
                 'w_up': Linear(d_model, hidden),     # SwiGLU up
                 'w_down': Linear(hidden, d_model),   # SwiGLU down
@@ -87,12 +87,12 @@ class SimpleLLM(Module):
                 setattr(self, f'l{l}_{k}', v)
             self.layers.append(layer)
 
-        # 最终归一化和输出头
+        # Final normalization and output head
         self.norm_f = RMSNorm(d_model)
         self.head = Linear(d_model, vocab_size)
 
     def param_list(self):
-        """按前向传播顺序返回所有参数"""
+        """Return all parameters in forward pass order"""
         params = [self.tok_emb.weight]
         for l in self.layers:
             params.extend([
@@ -107,7 +107,7 @@ class SimpleLLM(Module):
         return sum(p.numel for p in self.param_list())
 
     def forward_train(self, token_ids, target_ids):
-        """前向传播（训练模式）通过 notorch tape。返回 (loss_idx, loss_val)。"""
+        """Forward pass (training mode) through notorch tape. Returns (loss_idx, loss_val)."""
         CTX = len(token_ids)
         DIM = self.d_model
         HD = self.head_dim
@@ -117,9 +117,9 @@ class SimpleLLM(Module):
 
         params = self.param_list()
         tape_ids = [_lib.nt_tape_param(p._ptr) for p in params]
-        _lib.nt_tape_no_decay(tape_ids[0])  # embedding不做权重衰减
+        _lib.nt_tape_no_decay(tape_ids[0])  # No weight decay for embedding
 
-        # 构建token和目标张量
+        # Build token and target tensors
         tok_t = Tensor.zeros(CTX)
         tgt_t = Tensor.zeros(CTX)
         tok_t.set_data([float(x) for x in token_ids])
@@ -129,7 +129,7 @@ class SimpleLLM(Module):
         tok_t._owns = False
         tgt_t._owns = False
 
-        # 前向: embedding → transformer blocks → rmsnorm → lm_head → cross_entropy
+        # Forward: embedding → transformer blocks → rmsnorm → lm_head → cross_entropy
         pi = 0
         h = _lib.nt_seq_embedding(tape_ids[pi], -1, tok_idx, CTX, DIM); pi += 1
 
@@ -140,7 +140,7 @@ class SimpleLLM(Module):
             rms2=tape_ids[pi]; pi+=1
             wg=tape_ids[pi]; pi+=1; wu=tape_ids[pi]; pi+=1; wd=tape_ids[pi]; pi+=1
 
-            # 多头注意力: RMSNorm → Q/K/V → RoPE → causal attention → 输出投影 + 残差
+            # Multi-head attention: RMSNorm → Q/K/V → RoPE → causal attention → output projection + residual
             xn = _lib.nt_seq_rmsnorm(h, rms1, CTX, DIM)
             q = _lib.nt_rope(_lib.nt_seq_linear(wq, xn, CTX), CTX, HD)
             k = _lib.nt_rope(_lib.nt_seq_linear(wk, xn, CTX), CTX, HD)
@@ -148,7 +148,7 @@ class SimpleLLM(Module):
             attn = _lib.nt_mh_causal_attention(q, k, v, CTX, HD)
             h = _lib.nt_add(h, _lib.nt_seq_linear(wo, attn, CTX))
 
-            # SwiGLU前馈网络: RMSNorm → gate/up → SiLU(gate)*up → down + 残差
+            # SwiGLU feed-forward network: RMSNorm → gate/up → SiLU(gate)*up → down + residual
             xn = _lib.nt_seq_rmsnorm(h, rms2, CTX, DIM)
             gate = _lib.nt_silu(_lib.nt_seq_linear(wg, xn, CTX))
             up = _lib.nt_seq_linear(wu, xn, CTX)
@@ -159,7 +159,7 @@ class SimpleLLM(Module):
         logits_idx = _lib.nt_seq_linear(head_i, hf, CTX)
         loss_idx = _lib.nt_seq_cross_entropy(logits_idx, tgt_idx, CTX, self.vocab_size)
 
-        # 从tape读取loss值
+        # Read loss value from tape
         tape_ptr = _lib.nt_tape_get()
         entry_size = ctypes.sizeof(_NtTapeEntry)
         tape_addr = ctypes.cast(tape_ptr, ctypes.c_void_p).value
@@ -173,14 +173,14 @@ class SimpleLLM(Module):
         return loss_idx, loss_val
 
     def backward_step(self, loss_idx, loss_val, lr):
-        """反向传播 + Chuck优化器 + 清除tape"""
+        """Backward pass + Chuck optimizer + clear tape"""
         _lib.nt_tape_backward(loss_idx)
         _lib.nt_tape_clip_grads(ctypes.c_float(1.0))
         _lib.nt_tape_chuck_step(ctypes.c_float(lr), ctypes.c_float(loss_val))
         _lib.nt_tape_clear()
 
     def generate(self, tokenizer, prompt, max_new_tokens=50, temperature=0.8):
-        """生成文本 — 自回归生成"""
+        """Generate text — autoregressive generation"""
         _lib.nt_train_mode(0)
         ctx = tokenizer.encode(prompt)
 
@@ -224,7 +224,7 @@ class SimpleLLM(Module):
             hf = _lib.nt_seq_rmsnorm(h, rmsf, CTX, self.d_model)
             logits_idx = _lib.nt_seq_linear(head_i, hf, CTX)
 
-            # 读取最后位置的logits
+            # Read logits at the last position
             tape_ptr = _lib.nt_tape_get()
             entry_size = ctypes.sizeof(_NtTapeEntry)
             tape_addr = ctypes.cast(tape_ptr, ctypes.c_void_p).value
@@ -236,7 +236,7 @@ class SimpleLLM(Module):
             offset = (CTX - 1) * self.vocab_size
             raw_logits = [logits_t.data[offset + i] / temperature for i in range(self.vocab_size)]
 
-            # softmax采样
+            # Softmax sampling
             probs = softmax(raw_logits)
             next_id = multinomial(probs)
             _lib.nt_tape_clear()
@@ -246,59 +246,59 @@ class SimpleLLM(Module):
 
 
 def train_simple_model():
-    """训练简单模型的示例"""
-    # 准备训练数据（这里使用一个简单的文本）
+    """Example of training a simple model"""
+    # Prepare training data (using a simple text here)
     text = """
-    人工智能是计算机科学的一个分支，它企图了解智能的实质，并生产出一种新的能以人类智能相似的方式做出反应的智能机器。
-    机器学习是人工智能的一个重要分支，它通过算法使计算机能够从数据中学习并做出决策或预测。
-    深度学习是机器学习的一个子集，它使用神经网络来模拟人脑的工作方式。
-    大语言模型是深度学习在自然语言处理领域的重要应用，能够理解和生成人类语言。
+    Artificial intelligence is a branch of computer science that attempts to understand the essence of intelligence and produce intelligent machines that respond in ways similar to human intelligence.
+    Machine learning is an important branch of artificial intelligence that uses algorithms to enable computers to learn from data and make decisions or predictions.
+    Deep learning is a subset of machine learning that uses neural networks to simulate how the human brain works.
+    Large language models are an important application of deep learning in natural language processing, capable of understanding and generating human language.
     """
 
-    # 初始化分词器和模型
+    # Initialize tokenizer and model
     tokenizer = SimpleTokenizer(text)
     model = SimpleLLM(vocab_size=tokenizer.vocab_size)
 
-    print(f"词汇表大小: {tokenizer.vocab_size}")
-    print(f"模型参数数量: {model.count_params():,}")
+    print(f"Vocabulary size: {tokenizer.vocab_size}")
+    print(f"Model parameter count: {model.count_params():,}")
 
-    # 准备训练数据
+    # Prepare training data
     input_ids = tokenizer.encode(text)
     lr = 0.001
 
-    print("\n开始训练...")
+    print("\nStarting training...")
     for epoch in range(100):
-        # 随机选择一个序列片段
+        # Randomly select a sequence segment
         start_idx = random.randint(0, max(0, len(input_ids) - model.max_seq_len - 1))
         end_idx = start_idx + model.max_seq_len
 
-        # 输入和目标（目标是输入向右移动一位）
+        # Input and target (target is input shifted right by one position)
         token_ids = input_ids[start_idx:end_idx]
         target_ids = input_ids[start_idx+1:end_idx+1]
 
-        # 前向传播 + 反向传播
+        # Forward pass + backward pass
         loss_idx, loss_val = model.forward_train(token_ids, target_ids)
         model.backward_step(loss_idx, loss_val, lr)
 
         if epoch % 20 == 0:
             print(f"Epoch {epoch}, Loss: {loss_val:.4f}")
 
-    print("训练完成！\n")
+    print("Training complete!\n")
 
-    # 测试生成
-    print("=== 文本生成测试 ===")
-    test_prompts = ["人工智能", "机器学习", "深度学习"]
+    # Test generation
+    print("=== Text Generation Test ===")
+    test_prompts = ["Artificial", "Machine le", "Deep learn"]
 
     for prompt in test_prompts:
         generated_text = model.generate(tokenizer, prompt, max_new_tokens=30, temperature=0.8)
-        print(f"输入: '{prompt}'")
-        print(f"生成: {generated_text}")
+        print(f"Input: '{prompt}'")
+        print(f"Generated: {generated_text}")
         print("-" * 50)
 
 if __name__ == "__main__":
-    print("=== 最简LLM实现演示 ===")
-    print("这是一个教学用的简化版大语言模型实现")
-    print("包含了Transformer的核心组件：注意力机制、位置编码、前馈网络等\n")
+    print("=== Minimal LLM Implementation Demo ===")
+    print("This is an educational simplified large language model implementation")
+    print("Contains core Transformer components: attention mechanism, positional encoding, feed-forward network, etc.\n")
     print("notorch version — no PyTorch. Pure C backend.\n")
 
     train_simple_model()
