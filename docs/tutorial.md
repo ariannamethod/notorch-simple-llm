@@ -787,7 +787,7 @@ def train_simple_model():
     print(f"Number of model parameters: {sum(p.numel() for p in model.parameters()):,}")
 ```
 
-Here we've prepared a short Chinese text about AI as training data. In real-world applications, large language models are trained on trillions of words.
+Here we've prepared a short English text about AI as training data. In real-world applications, large language models are trained on trillions of words.
 
 ### 5.2 The Training Loop
 
@@ -878,7 +878,7 @@ After training, we can test the model's generation capabilities. Although our mo
 
 When we see the model generating coherent text, it's tempting to think it truly "understands" language. But in reality, what the model does is statistical pattern matching.
 
-Imagine the model as a very observant foreigner who doesn't understand the meaning of Chinese, but through observing vast amounts of Chinese text, has discovered certain patterns:
+Imagine the model as a very observant reader who doesn't truly understand the meaning of language, but through observing vast amounts of text, has discovered certain patterns:
 
 - "Artificial intelligence" is often followed by "is," "can," or other connecting words
 - "Machine learning" and "deep learning" often appear in similar contexts
